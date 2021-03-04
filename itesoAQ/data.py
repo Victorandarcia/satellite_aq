@@ -10,7 +10,6 @@ import xlrd
 import math
 from . import utils
 
-
 from datetime import datetime, timedelta
 
 
@@ -50,14 +49,14 @@ def database_clean(interval='hour'):
     dir_gdl = '../data/raw/simaj/'
 
     # list for station names
-    #est_list = ['AGU','ATM','CEN','LPIN','LDO','MIR','OBL','SFE','TLA','VAL']
+    # est_list = ['AGU','ATM','CEN','LPIN','LDO','MIR','OBL','SFE','TLA','VAL']
 
     # check for file or directory in dir_gdl
     for file in os.listdir(dir_gdl):
 
         if file.endswith('.xlsx'):
             # SIMAJ data is in xls and in different sheets
-            xls = xlrd.open_workbook(r''+dir_gdl+file, on_demand=True)
+            xls = xlrd.open_workbook(r'' + dir_gdl + file, on_demand=True)
             sheets = xls.sheet_names()  # creates list form sheet names
 
         else:
@@ -74,7 +73,7 @@ def database_clean(interval='hour'):
 
         # creates new df in which air quality data for all stations will be saved
         df = pd.DataFrame(index=np.array(range(0, len(date_array))), columns=[
-                          'FECHA', 'HORA', 'O3', 'PM10', 'CO', 'NO2', 'SO2', 'TMP', 'HR', 'WS', 'WD'])
+            'FECHA', 'HORA', 'O3', 'PM10', 'CO', 'NO2', 'SO2', 'TMP', 'HR', 'WS', 'WD'])
 
         # datetime id counter
         dt_id = 0
@@ -102,7 +101,7 @@ def database_clean(interval='hour'):
 
             # reads excel with data and sets empty cells as nan
             gdl_data = pd.read_excel(
-                dir_gdl+file, sheet_name=s).replace(r'^\s*$', np.nan, regex=True)
+                dir_gdl + file, sheet_name=s).replace(r'^\s*$', np.nan, regex=True)
 
             gdl_data.rename(
                 columns={gdl_data.columns[0]: 'FECHA', gdl_data.columns[1]: 'HORA'}, inplace=True)
@@ -146,10 +145,10 @@ def database_clean(interval='hour'):
                     except:
 
                         # if HORA is nan it takes previous date and hour and adds +1h and stores it in date and time
-                        prev_date = gdl_data['FECHA'].iloc[i-1]
-                        prev_hour = gdl_data['HORA'].iloc[i-1]
+                        prev_date = gdl_data['FECHA'].iloc[i - 1]
+                        prev_hour = gdl_data['HORA'].iloc[i - 1]
 
-                        prev_datetime = str(prev_date)+' '+str(prev_hour)
+                        prev_datetime = str(prev_date) + ' ' + str(prev_hour)
 
                         date_datetime = datetime.strptime(
                             prev_datetime, '%Y-%m-%d %H:%M')
@@ -195,7 +194,7 @@ def database_clean(interval='hour'):
         df = df.drop(columns=0)
         # saves data for all years, stations and parameters
         df.to_csv('../data/processed/' +
-                  file[6:10]+'_'+interval+'.csv')
+                  file[6:10] + '_' + interval + '.csv')
 
 
 def restructure_database(interval='hour'):
@@ -219,7 +218,7 @@ def restructure_database(interval='hour'):
             if interval in file:
 
                 # read csv of air quality data according to interval
-                simaj_data = pd.read_csv(dir_gdl+file)
+                simaj_data = pd.read_csv(dir_gdl + file)
 
                 simaj_reestructurado = simaj_data.copy()
 
@@ -256,7 +255,6 @@ def restructure_database(interval='hour'):
     i = 0
 
     for est in stations_simaj['codigo']:
-
         # adds coordinates to df
         simaj_reestructurado_all.loc[simaj_reestructurado_all.EST_SIMAJ == est,
                                      'LONG'] = stations_simaj[stations_simaj['codigo'] == est]['long'][i]
@@ -267,3 +265,96 @@ def restructure_database(interval='hour'):
         i = i + 1
 
     return (simaj_reestructurado_all)
+
+
+class OutliersRemovalTools:
+    '''
+    Class that will have different methods to deal with outliers.
+    '''
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import os
+
+    def __init__(self):
+        self.concat_df = pd.DataFrame()
+        self.params_dict_df = dict()
+        self.parameters = None
+        self.stations = ['ATM', 'OBL', 'LPIN', 'SFE', 'TLA', 'VAL', 'CEN', 'AGU', 'LDO', 'MIR']
+        self.nulls_df = pd.DataFrame()
+
+    def fit_data(self):
+        '''
+
+        Returns
+        -------
+
+        '''
+        # dir_gdl = '../data/processed'
+        dir_gdl = r'C:\Users\victo\PycharmProjects\DataScienceProj\DS-Proj\Air_modelling\ItesoAQ\data\processed'
+
+        counter = 0
+        for file in os.listdir(dir_gdl):
+
+            if file.endswith('.csv'):
+                if counter == 0:
+                    self.concat_df = pd.read_csv(file)
+                    counter += 1
+                    continue
+                self.concat_df = pd.concat([self.concat_df, pd.read_csv(file)])
+
+        self.parameters = self.concat_df['PARAM'].unique()
+
+        for parameter in self.parameters:
+            self.params_dict_df[parameter] = self.concat_df.groupby('PARAM').get_group(parameter)
+
+    def count_null(self):
+        # arg: df
+        # returns a heatmap showing nan qty on each parameter df and year
+        pass
+
+    def remove_std_outliers(self, std_factor=3):
+
+        for parameter in self.params_dict_df:
+
+            # OutliersRemovalTools.count_null(parameter[self.stations], before_pp=True) #count null before process
+
+            # Create a main_df which saves the index of the original df
+            main_df = parameter[['FECHA', 'HORA', 'PARAM']]
+
+            #Create a np array that only has the data of each station
+            param_arr = parameter[self.stations].to_numpy()
+
+            # Create fvout_arr (first value out array) which has all the rows but the first one
+            fvout_arr = param_arr[1:, :]
+
+            # Create a lvout_arr (last value out array) which has all the rpws but the last one
+            lvout_arr = param_arr[:-1, :]
+
+            # create a delta_arr array that stores the value of the diff between fvout and lvout
+            delta_arr = fvout_arr - lvout_arr
+
+            # obtain the mean and std of the delta_arr values
+            mean_delta_arr = np.nanmean(delta_arr)
+            std_delta_arr = np.nanstd(delta_arr)
+
+            # hscalar represents the highest value our parameter can have before we remove it
+            # lscalar works the same but with the lowest value
+            hscalar = mean_delta_arr + std_factor * std_delta_arr
+            lscalar = mean_delta_arr - std_factor * std_delta_arr
+
+            # get the index of the elements whose values are gt hscalar or lt lscalar
+            # IMPORTANT!!: add a + 1 on the row index as we are going to delete the values from the main ndarray and not from delta_arr
+            outliers = np.where((delta_arr <= lscalar) | (delta_arr >= hscalar))
+            coordinates = list(zip(outliers[0] + 1, outliers[1]))
+
+            for i in range(len(coordinates)):
+                param_arr[coordinates[i]] = np.nan
+
+            param_df = pd.DataFrame(columns=self.stations, data=param_arr)
+
+            outliers_removed_df = pd.concat([main_df, param_df])
+
+            # OutliersRemovalTools.count_null(parameter[outliers_removed_df, before_pp=False) #count null after process
+            #merge all param data again and then export to csv
