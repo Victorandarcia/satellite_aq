@@ -278,32 +278,24 @@ class OutliersRemovalTools:
     import os
 
     def __init__(self):
-        import pandas as pd
-
         self.concat_df = pd.DataFrame()
         self.params_dict_df = dict()
-        self.preprocessed_df = pd.DataFrame()
         self.parameters = None
         self.stations = ['ATM', 'OBL', 'LPIN', 'SFE', 'TLA', 'VAL', 'CEN', 'AGU', 'LDO', 'MIR']
         self.nulls_df = pd.DataFrame()
-        self.dir_gdl = '../data/processed'
 
     def fit_data(self):
-        import pandas as pd
-        import datetime as dt
-        import os
         '''
 
         Returns
         -------
 
         '''
-        self.dir_gdl = r'C:\Users\victo\PycharmProjects\DataScienceProj\DS-Proj\Air_modelling\ItesoAQ\data\processed'
-        os.chdir(self.dir_gdl)
+        # dir_gdl = '../data/processed'
+        dir_gdl = r'C:\Users\victo\PycharmProjects\DataScienceProj\DS-Proj\Air_modelling\ItesoAQ\data\processed'
 
         counter = 0
-
-        for file in os.listdir(self.dir_gdl):
+        for file in os.listdir(dir_gdl):
 
             if file.endswith('.csv'):
                 if counter == 0:
@@ -313,55 +305,26 @@ class OutliersRemovalTools:
                 self.concat_df = pd.concat([self.concat_df, pd.read_csv(file)])
 
         self.parameters = self.concat_df['PARAM'].unique()
-        self.concat_df['FECHA'] = [dt.datetime.combine(
-            dt.date.fromisoformat(self.concat_df['FECHA'].iloc[i]),
-            dt.time.fromisoformat(self.concat_df['HORA'].iloc[i])
-                                            )
-            for i in range(len(self.concat_df['FECHA']))]
 
         for parameter in self.parameters:
             self.params_dict_df[parameter] = self.concat_df.groupby('PARAM').get_group(parameter)
 
-    def count_null(self, df, title):
-        import pandas as pd
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-        import numpy as np
-
+    def count_null(self):
         # arg: df
         # returns a heatmap showing nan qty on each parameter df and year
-        gby_st = self.concat_df.groupby(pd.Grouper(key='FECHA', freq='Y')).count()
-        for i in range(len(gby_st)):
-            gby_st.iloc[i, :] = gby_st.iloc[i, :] / gby_st['HORA'][i]
-        data_qty_in_station = gby_st[self.stations]
-        data_qty_in_station = 1 - data_qty_in_station
-        data_qty_in_station.index = data_qty_in_station.index.year
-        sns.heatmap(data_qty_in_station, annot=True, cmap="RdBu")
-
+        pass
 
     def remove_std_outliers(self, std_factor=3):
-        import numpy as np
-        import pandas as pd
-        import datetime as dt
-        import os
-
-        # heatmap before outliers removal
-        OutliersRemovalTools.count_null(self, title='Null percentage before removal')
 
         for parameter in self.params_dict_df:
 
-            parameter_df = self.params_dict_df[parameter]
-            parameter_df.reset_index(inplace=True)
             # OutliersRemovalTools.count_null(parameter[self.stations], before_pp=True) #count null before process
 
             # Create a main_df which saves the index of the original df
-            main_df = parameter_df[['FECHA', 'HORA', 'PARAM']]
-            # main_df = pd.DataFrame()
-            # main_df['FECHA'] = [dt.date.fromisoformat(i) for i in parameter_df['FECHA']]
-            # main_df['HORA'] = parameter_df['HORA']
-            # main_df['PARAM'] = parameter_df['PARAM']
-            # # Create a np array that only has the data of each station
-            param_arr = parameter_df[self.stations].to_numpy()
+            main_df = parameter[['FECHA', 'HORA', 'PARAM']]
+
+            #Create a np array that only has the data of each station
+            param_arr = parameter[self.stations].to_numpy()
 
             # Create fvout_arr (first value out array) which has all the rows but the first one
             fvout_arr = param_arr[1:, :]
@@ -390,25 +353,8 @@ class OutliersRemovalTools:
                 param_arr[coordinates[i]] = np.nan
 
             param_df = pd.DataFrame(columns=self.stations, data=param_arr)
-            outliers_removed_df = main_df.join(param_df)
 
-            self.preprocessed_df = self.preprocessed_df.append(outliers_removed_df)
+            outliers_removed_df = pd.concat([main_df, param_df])
 
-        self.preprocessed_df.set_index(['FECHA', 'HORA', 'PARAM'], inplace=True)
-        self.preprocessed_df.sort_index(inplace=True)
-
-        OutliersRemovalTools.count_null(self, title='Null percentage after 3std removal')
-
-    def export_to_csv(self):
-        import os
-        os.chdir(self.dir_gdl + r'\\Outliers-rmvd\\')
-        self.preprocessed_df.to_csv(f'{self.preprocessed_df.index[0][0].year}-{self.preprocessed_df.index[-1][0].year}_3std_preprocessed.csv')
-
-    def trial(self):
-        pass
-        # t1 = OutliersRemovalTools()
-        # t1.fit_data()
-        # t1.remove_std_outliers()
-        # t1.export_to_csv()
-
-
+            # OutliersRemovalTools.count_null(parameter[outliers_removed_df, before_pp=False) #count null after process
+            #merge all param data again and then export to csv
