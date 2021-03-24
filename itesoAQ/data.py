@@ -271,60 +271,91 @@ class OutliersRemovalTools:
     '''
     Class that will have different methods to deal with outliers.
     '''
-    import pandas as pd
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    import os
 
     def __init__(self):
+        import pandas as pd
+
         self.concat_df = pd.DataFrame()
         self.params_dict_df = dict()
+        self.preprocessed_df = pd.DataFrame()
         self.parameters = None
-        self.stations = ['ATM', 'OBL', 'LPIN', 'SFE', 'TLA', 'VAL', 'CEN', 'AGU', 'LDO', 'MIR']
+        self.stations = ['AGU', 'ATM', 'CEN', 'LDO', 'LPIN', 'MIR', 'OBL', 'SFE', 'TLA', 'VAL']
         self.nulls_df = pd.DataFrame()
+        self.dir_gdl = '../data/processed'
 
     def fit_data(self):
+        import pandas as pd
+        import datetime as dt
+        import os
+
+        '''
+        Reads the .csv files located on the dir_gdl var. 
+        Creates a new var called concat_df in whit the data will be stored as a DF.
+        The concat_df will have its date values in a datetime format and the stations rows are ordered alphabetically.
+        Creates a parameters_dict_df dictionary containing all parameters data separated.
+        
+        There's no input and output as it will update the attributes of the class.
         '''
 
-        Returns
-        -------
+        #Select the path to read the .csv files
+        #self.dir_gdl = r'C:\Users\victo\PycharmProjects\DataScienceProj\DS-Proj\Air_modelling\ItesoAQ\data\processed'
+        os.chdir(self.dir_gdl)
 
-        '''
-        # dir_gdl = '../data/processed'
-        dir_gdl = r'C:\Users\victo\PycharmProjects\DataScienceProj\DS-Proj\Air_modelling\ItesoAQ\data\processed'
-
+        #Start the iter to read each file
         counter = 0
-        for file in os.listdir(dir_gdl):
+        for file in os.listdir(self.dir_gdl):
 
             if file.endswith('.csv'):
                 if counter == 0:
                     self.concat_df = pd.read_csv(file)
                     counter += 1
                     continue
+
+                #concat previous files read with new ones
                 self.concat_df = pd.concat([self.concat_df, pd.read_csv(file)])
 
+        #Creating a list with unique var of the parameters
         self.parameters = self.concat_df['PARAM'].unique()
 
+        #Updating 'FECHA' column in a datetime format
+        self.concat_df['FECHA'] = [dt.datetime.combine(
+            dt.date.fromisoformat(self.concat_df['FECHA'].iloc[i]),
+            dt.time.fromisoformat(self.concat_df['HORA'].iloc[i])
+                                            )
+            for i in range(len(self.concat_df['FECHA']))]
+
+        #Arrange concat_df stations alphabetically
+        self.concat_df = self.concat_df[['FECHA', 'HORA', 'PARAM', 'AGU', 'ATM', 'CEN', 'LDO', 'LPIN', 'MIR', 'OBL', 'SFE', 'TLA', 'VAL']]
+
+        #Create dict to store each parameters df
         for parameter in self.parameters:
             self.params_dict_df[parameter] = self.concat_df.groupby('PARAM').get_group(parameter)
 
-    def count_null(self):
-        # arg: df
-        # returns a heatmap showing nan qty on each parameter df and year
-        pass
 
-    def remove_std_outliers(self, std_factor=3):
+    def remove_std_outliers_v1(self, std_factor=3):
+        '''
+        Method that will remove all of the values that are lower or higher than
+        the sum of the average + - std_factor * std dev.
+        The average and std dev is considered to be different on each station and on each parameter.
+        The outliers will be replaced with a NaN.
+
+        :param std_factor: factor to which multiply the std dev
+        :return: updates the preprocessed_df class attribute
+        '''
+
+        import numpy as np
+        import pandas as pd
 
         for parameter in self.params_dict_df:
 
-            # OutliersRemovalTools.count_null(parameter[self.stations], before_pp=True) #count null before process
+            parameter_df = self.params_dict_df[parameter]
+            parameter_df.reset_index(inplace=True)
 
             # Create a main_df which saves the index of the original df
-            main_df = parameter[['FECHA', 'HORA', 'PARAM']]
+            main_df = parameter_df[['FECHA', 'HORA', 'PARAM']]
 
-            #Create a np array that only has the data of each station
-            param_arr = parameter[self.stations].to_numpy()
+            # # Create a np array that only has the data of each station
+            param_arr = parameter_df[self.stations].to_numpy()
 
             # Create fvout_arr (first value out array) which has all the rows but the first one
             fvout_arr = param_arr[1:, :]
@@ -353,8 +384,106 @@ class OutliersRemovalTools:
                 param_arr[coordinates[i]] = np.nan
 
             param_df = pd.DataFrame(columns=self.stations, data=param_arr)
+            outliers_removed_df = main_df.join(param_df)
 
-            outliers_removed_df = pd.concat([main_df, param_df])
+            self.preprocessed_df = self.preprocessed_df.append(outliers_removed_df)
 
-            # OutliersRemovalTools.count_null(parameter[outliers_removed_df, before_pp=False) #count null after process
-            #merge all param data again and then export to csv
+        self.preprocessed_df.set_index(['FECHA', 'HORA', 'PARAM'], inplace=True)
+        self.preprocessed_df.sort_index(inplace=True)
+        self.preprocessed_df.reset_index(inplace=True)
+
+    def remove_std_outliers_v2(self, std_factor=3):
+        '''
+        This method is a modified version of the remove_std_outliers_v1 method that
+        deletes outliers that fits the following statements:
+
+            There must be at least 2 consecutive values higher or lower than the 3 std scalar.
+            from those 2 consecutive values, one must have a negative value and the other a positive value in order to be removed.
+
+        :param std_factor: std dev factor in which the data will be considered as outlier.
+        :return: Updates the preprocessed_df attribute which then can be exported to a .csv file.
+        '''
+
+        import numpy as np
+        import pandas as pd
+
+        for parameter in self.params_dict_df:
+
+            parameter_df = self.params_dict_df[parameter]
+            parameter_df.reset_index(inplace=True)
+
+            # Create a main_df which saves the index of the original df
+            main_df = parameter_df[['FECHA', 'HORA', 'PARAM']]
+
+            # # Create a np array that only has the data of each station
+            P_arr = parameter_df[self.stations].to_numpy()
+
+            # Create fvout_arr (first value out array) which has all the rows but the first one
+            fvout_arr = P_arr[1:, :]
+
+            # Create a lvout_arr (last value out array) which has all the rpws but the last one
+            lvout_arr = P_arr[:-1, :]
+
+            # create a delta_arr array that stores the value of the diff between fvout and lvout
+            delta_arr = fvout_arr - lvout_arr
+
+            # obtain the mean and std of the delta_arr values
+            mean_delta_arr = np.nanmean(delta_arr, axis=0)
+            std_delta_arr = np.nanstd(delta_arr, axis=0)
+
+            # hscalar represents the highest value our parameter can have before we remove it
+            # lscalar works the same but with the lowest value
+            hscalar = mean_delta_arr + std_factor * std_delta_arr
+            lscalar = mean_delta_arr - std_factor * std_delta_arr
+
+            # get the index of the elements whose values are gt hscalar or lt lscalar
+            outliers = np.where((delta_arr <= lscalar) | (delta_arr >= hscalar))
+            coordinates = list(zip(outliers[0], outliers[1]))
+
+            if coordinates[-1][0] == delta_arr.shape[0] - 1:
+                coordinates.pop(-1)
+
+            # Create a new list to store the real outliers
+            coord_v2 = list()
+
+            for i in range(len(coordinates)):
+
+                # check the next value from the first outliers list comparing it with the lscalar
+                if delta_arr[(coordinates[i][0] + 1, coordinates[i][1])] <= lscalar[coordinates[i][1]]:
+
+                    # check for differences on the signs between values, if they differ, add the loc to the new list
+                    if np.sign(delta_arr[(coordinates[i][0], coordinates[i][1])]) != np.sign(
+                            delta_arr[(coordinates[i][0] + 1, coordinates[i][1])]):
+                        coord_v2.append((coordinates[i][0] + 1, coordinates[i][1]))
+
+                # check the next value from the first outliers list comparing it with the hscalar
+                elif delta_arr[(coordinates[i][0] + 1, coordinates[i][1])] >= hscalar[coordinates[i][1]]:
+
+                    # check for differences on the signs between values, if they differ, add the loc to the new list
+                    if np.sign(delta_arr[(coordinates[i][0], coordinates[i][1])]) != np.sign(
+                            delta_arr[(coordinates[i][0] + 1, coordinates[i][1])]):
+                        coord_v2.append((coordinates[i][0] + 1, coordinates[i][1]))
+                else:
+
+                    continue
+
+            for i in range(len(coord_v2)):
+                P_arr[coord_v2[i]] = np.nan
+
+            param_df = pd.DataFrame(columns=self.stations, data=P_arr)
+            outliers_removed_df = main_df.join(param_df)
+
+            self.preprocessed_df = self.preprocessed_df.append(outliers_removed_df)
+
+        self.preprocessed_df.set_index(['FECHA', 'HORA', 'PARAM'], inplace=True)
+        self.preprocessed_df.sort_index(inplace=True)
+        self.preprocessed_df.reset_index(inplace=True)
+
+    def export_to_csv(self):
+        '''
+        :return: a .csv file with the preprocessed data.
+        '''
+        import os
+        os.chdir(self.dir_gdl + r'\\Outliers-rmvd\\')
+        self.preprocessed_df.to_csv(f'{self.preprocessed_df["FECHA"].iloc[0].year}-{self.preprocessed_df["FECHA"].iloc[-1].year}_3std_preprocessed.csv')
+
