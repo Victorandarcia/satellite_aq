@@ -11,7 +11,7 @@ if module_path not in sys.path:
 
 def main():
 
-    preprocessed_data = OutliersRemovalTools()
+    preprocessed_data = itesoAQ.OutliersRemovalTools()
     preprocessed_data.fit_data()
     preprocessed_data.remove_std_outliers_v2()
     preprocessed_data.export_to_csv()
